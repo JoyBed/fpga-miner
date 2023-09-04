@@ -102,7 +102,7 @@ try:
                         coinbasebytes = unhexlify(coinbasehex)
 
                         # Calculate the double SHA-256 hash
-                        coinbasetxid = sha256(sha256(coinbasebytes).digest()).digest()
+                        coinbasetxid = header.sha256d(coinbasebytes)
                         
                         data = pack('<I', version)
                         data += unhexlify(prevhash)[::-1]
