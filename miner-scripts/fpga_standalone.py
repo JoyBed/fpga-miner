@@ -7,8 +7,6 @@ from binascii import hexlify, unhexlify
 from hashlib import sha256
 from struct import pack
 from serial import Serial
-sys.path.append("../solo/")
-from template import sha256d, merkle_root, merkle_branch, serialize_int
 
 # Pool details
 pool_host = "dgbodo.stratum.hashpool.site"
