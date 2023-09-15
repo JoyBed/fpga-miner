@@ -25,7 +25,7 @@ def process_work(conn, data, target, seed, idstring, ntime, nonce2):
     hex_data = hex(int(reversed_data, 2))[2:]
     data_reversed = bytearray.fromhex(data)[::-1]
     data_hex_reversed = data_reversed.hex()
-    #payload1 = target + hex_data.zfill(160)
+    #payload1 = hex_data.zfill(160) + target[4:-36]
     #payload1 = data[:-8] + target
     hex_bytes = bytes.fromhex(data[:-8])
     reversed_bytes = hex_bytes[::-1]
@@ -45,7 +45,7 @@ def process_work(conn, data, target, seed, idstring, ntime, nonce2):
         y = x[:-1]
         if (y != prev) and (y != b'') and (len(y) != 8):
             waiting = 0
-            nonce = y
+            nonce_temp = y
             prev = y
             result = 1
         elapsed_time = time.time() - start_time
@@ -54,9 +54,17 @@ def process_work(conn, data, target, seed, idstring, ntime, nonce2):
             waiting = 0
             
     if (result == 1):
+        nonce_res = nonce_temp.hex()
         print("Received data from FPGA")
-        print("Nonce: ", (nonce.hex()))
-        send_response(conn, (nonce.hex()), idstring, ntime, nonce2)
+        print("Nonce: ", nonce_res)
+        print(nonce_res)
+        nonce_res2 = hex(int(nonce_res, 16) - int("0", 16))
+        print(nonce_res2[2:])
+        nonce_temp2 = nonce_res2[2:]
+        nonce = nonce_temp2.rjust(8, '0')
+        print(type(nonce), nonce)
+        print(nonce_temp2)
+        send_response(conn, nonce, idstring, ntime, nonce2)
     else:
         print("No data received from FPGA")
         print("Jumping back to receiving work")
