@@ -9,12 +9,16 @@ from struct import pack
 from serial import Serial
 
 # Pool details
-pool_host = "dgbodo.stratum.hashpool.site"
-pool_port = 11116  # Replace with your pool's port
+pool_host = "dgb-odocrypt.f2pool.com"
+#pool_host = "odocrypt.eu.mine.zpool.ca"
+#pool_host = "europe.solomining.io"
+pool_port = 11115  # Replace with your pool's port
+#pool_port = 3331  # Replace with your pool's port
+#pool_port = 8883  # Replace with your pool's port
 
 # Worker details
 worker_username = "DAXhPVeS94RvKgJNx6s4YD5EAt26rZSnNX"
-worker_password = "x"
+worker_password = "d=0.03"
 
 nonce2 = 0
 # Create a socket connection to the pool
@@ -23,37 +27,34 @@ try:
     s.connect((pool_host, pool_port))
     ser = Serial("/dev/ttyUSB2", 115200, timeout=2)
 
-    cli_authid = "DAXhPVeS94RvKgJNx6s4YD5EAt26rZSnNX.odominer"
+    cli_authid = "DAXhPVeS94RvKgJNx6s4YD5EAt26rZSnNX"
 
     # Send a mining subscribe request
-    subscribe_request = b'{"id": 1,"method": "mining.subscribe","params": ["odominer"]}\n'
+    subscribe_request = b'{"id": 1,"method": "mining.subscribe","params": []}\n'
     s.send(subscribe_request)
 
     response = s.recv(1024).decode()
     response_json = json.loads(response)
-    #print(response)
+    print(response)
 
     if 'result' in response_json and len(response_json['result']) > 1:
         enonce1 = response_json['result'][1]
         nonce2len = response_json['result'][2]
+        print(enonce1)
+        print(nonce2len)
         print(f"Subscribed to mining notifications. Extranonce1: {enonce1}")
 
     # Send a mining authorize request
-    authorize_request = b'{"id": 2,"method": "mining.authorize","params": ["DAXhPVeS94RvKgJNx6s4YD5EAt26rZSnNX", "x"]}\n'
+    authorize_request = b'{"id": 2,"method": "mining.authorize","params": ["DAXhPVeS94RvKgJNx6s4YD5EAt26rZSnNX", "d=0.03"]}\n'
     s.send(authorize_request)
-
-    response = s.recv(4096).decode()
-    response_json = json.loads(response)
-    #print(response_json)
-
-    if 'result' in response_json and response_json['result'] is True:
-        print(f"Authorized as worker: {worker_username}")
 
     # Listen for mining notifications and extract data
     
     buffer = ""
+    #cli_jsonid = 3
     cli_jsonid = 3
     target = None
+    authorised = False
     while True:
         data = s.recv(4096).decode()
         buffer += data
@@ -69,12 +70,10 @@ try:
                 if 'method' in mining_notification_json:
                     method = mining_notification_json['method']
                     #print(mining_notification_json)
-                    if method == 'mining.notify':
+                    if method == 'mining.notify' and authorised == True:
+                    
                         # Extract relevant data and perform mining tasks
-                        odokey = mining_notification_json['odokey']
-                        job_id = mining_notification_json['params'][0]
-                        ntime = mining_notification_json['params'][7]
-                        idstring  = mining_notification_json['params'][0]
+                        job_id = idstring = mining_notification_json['params'][0]
                         prevhash  = header.swap_order(mining_notification_json['params'][1][::-1])
                         coinbase1 = mining_notification_json['params'][2]
                         coinbase2 = mining_notification_json['params'][3]
@@ -82,8 +81,15 @@ try:
                         version   = int(mining_notification_json['params'][5], 16)
                         bits      = mining_notification_json['params'][6]
                         curtime   = int(mining_notification_json['params'][7], 16)
+                        ntime = mining_notification_json['params'][7]
+                        
+                        if 'odokey' in mining_notification_json:
+                            odokey = mining_notification_json['odokey']
+                        else:
+                            odokey = header.odokey_from_ntime(str(ntime), 0)
+                            
                         # Extract other data as needed
-                        print(f"\nidstring: {idstring}\n prevhash: {prevhash}\n coinbase1: {coinbase1}\n coinbase2: {coinbase2}\n merklearr: {merklearr}\n version: {version}\n bits: {bits}\n curtime: {curtime}\n odokey: {odokey}\n")
+                        print(f"\n idstring: {idstring}\n prevhash: {prevhash}\n coinbase1: {coinbase1}\n coinbase2: {coinbase2}\n merklearr: {merklearr}\n version: {version}\n bits: {bits}\n curtime: {curtime}\n odokey: {odokey}\n")
                         
                         if mining_notification_json['params'][8] and nonce2 > 0:
                             nonce2 = 0
@@ -94,15 +100,16 @@ try:
                         nonce2hex = nonce2hex1[2:]
                         
                         # Pad with zeros if needed to match nonce2len * 2 characters
-                        while len(nonce2hex) < (nonce2len - 1) * 2:
+                        while len(nonce2hex) < (nonce2len) * 2:
                             nonce2hex = '0' + nonce2hex
                         
                         coinbasehex = coinbase1+enonce1+nonce2hex+coinbase2
+                        
                         # Convert the hexadecimal string to bytes
                         coinbasebytes = unhexlify(coinbasehex)
 
                         # Calculate the double SHA-256 hash
-                        coinbasetxid = header.sha256d(coinbasebytes)
+                        coinbasetxid = header.sha256d(coinbasehex.encode())
                         
                         data = pack('<I', version)
                         data += unhexlify(prevhash)[::-1]
@@ -138,14 +145,14 @@ try:
                                 prev = y
                                 result = 1
                             elapsed_time = time.time() - start_time
-                            if elapsed_time > (255):
+                            if elapsed_time > (240):
                                 result = 0
                                 waiting = 0
             
                         if (result == 1):
                             print("Received data from FPGA")
                             print("Nonce: ", (nonce.hex()))
-                            params = [cli_authid, str(idstring), str(nonce2), str(ntime), str(nonce.hex())]
+                            params = [cli_authid, str(idstring), str(nonce2hex), str(ntime), str(nonce.hex())]
                             modifiedchunk = json.dumps({'id':cli_jsonid, 'method':'mining.submit','params':params})
                             print(modifiedchunk)
                             s.send(modifiedchunk.encode())
@@ -157,16 +164,23 @@ try:
                     elif method == 'mining.set_difficulty':
                         cli_diff = float(mining_notification_json['params'][0])
                         target = header.difficulty_to_hextarget(cli_diff)
-                        print('Target: {}\n'.format(target))
+                        print('\nTarget: {}'.format(target))
                         
                 elif 'reject-reason' in mining_notification_json:
                     print(mining_notification_json)
                     
                 elif 'result' in mining_notification_json:
+                    #print(mining_notification_json)
+                    if (mining_notification_json['result'] is True) and (mining_notification_json['id'] == int(2)):
+                        authorised = True
+                        print(f"Authorized as worker: {worker_username}")
+                    elif (mining_notification_json['result'] is True) and (mining_notification_json['id'] != int(2)):
+                        print(type(mining_notification_json['id']))
+                        print(mining_notification_json['result'])
+                        print("Result accepted")
+                else:
                     print(mining_notification_json)
                     
-                    
-#except Exception as e:
-#    print(f"An error occurred: {str(e)}")
+
 finally:
     s.close()
